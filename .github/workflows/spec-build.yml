@@ -101,9 +101,10 @@ jobs:
           cache: maven
 
       # builds everything, resolves every tck.bndrun and runs every TCK;
-      # -runbundles are computed, never committed
+      # -runbundles are computed, never committed. -U forces snapshot
+      # updates: the cached ~/.m2 must not pin a stale parent pom
       - name: Build, resolve and test
-        run: mvn -B -ntp -Dbnd.version="$BND" install
+        run: mvn -B -ntp -U -Dbnd.version="$BND" install
 
       # renders the JUnit XML of the TCK runs as a check run with
       # annotations and a job summary
@@ -198,7 +199,7 @@ jobs:
 
       - name: Deploy SNAPSHOT (main variant)
         run: >-
-          mvn -B -ntp -Pdeploy -Dgpg.skip=true -DskipTests
+          mvn -B -ntp -U -Pdeploy -Dgpg.skip=true -DskipTests
           -Dbnd.version=${{ inputs.bnd-current }} deploy
         env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_SONATYPE_TOKEN_USERNAME }}

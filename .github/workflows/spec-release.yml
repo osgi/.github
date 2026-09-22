@@ -46,7 +46,7 @@ jobs:
           gpg-passphrase: MAVEN_GPG_PASSPHRASE
 
       - name: Build, test and deploy release
-        run: mvn -B -ntp -Pdeploy deploy
+        run: mvn -B -ntp -U -Pdeploy deploy
         env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_SONATYPE_TOKEN_USERNAME }}
           CENTRAL_PASSWORD: ${{ secrets.CENTRAL_SONATYPE_TOKEN_PASSWORD }}
