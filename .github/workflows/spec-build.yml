@@ -170,11 +170,31 @@ jobs:
           path: '**/target/test-reports/tck/*.xml'
           if-no-files-found: ignore
 
+  # own check outside the matrix: a PR already fails on javadoc errors
+  # instead of the deploy job after the merge
+  javadoc:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ inputs.jdk-main }}
+          cache: maven
+
+      - name: Build javadoc jars
+        run: >-
+          mvn -B -ntp -U -DskipTests -Pjavadoc-check
+          -Dbnd.version=${{ inputs.bnd-current }} package
+
   deploy:
-    needs: build
+    needs: [build, javadoc]
     if: >-
       inputs.deploy && github.ref == 'refs/heads/main' &&
-      needs.build.result == 'success'
+      needs.build.result == 'success' && needs.javadoc.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
