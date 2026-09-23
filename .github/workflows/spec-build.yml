@@ -152,7 +152,7 @@ jobs:
           path: '**/target/baseline/*.txt'
           if-no-files-found: ignore
 
-      - name: Upload jars and chapter PDFs
+      - name: Upload jars and chapter PDFs and HTML
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -160,6 +160,7 @@ jobs:
           path: |
             **/target/*.jar
             **/target/spec/pdf/*.pdf
+            **/target/spec/html/**
           if-no-files-found: warn
 
       - name: Upload test reports
