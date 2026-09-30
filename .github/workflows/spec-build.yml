@@ -1,8 +1,10 @@
 # Central reusable build workflow for all org.osgi.* spec repos, called
 # from each repo's build.yml stub (otterdog blueprint require-ci-workflows).
-# Variants: main (deploy candidate, always), bnd-next and jdk-next (gated
-# behind the "extended" input). Each variant builds the whole repo,
-# resolves every tck.bndrun and runs every TCK.
+# Variants: main (deploy candidate, bnd.version of the parent pom),
+# bnd-next (always, as a test with bnd.next.version of the parent pom;
+# its failure does not fail the build) and jdk-next (gated behind the
+# "extended" input). Each variant builds the whole repo, verifies every
+# tck.bndrun and runs every TCK.
 name: spec-build
 
 on:
@@ -13,7 +15,7 @@ on:
         type: boolean
         default: false
       extended:
-        description: also build and test with bnd-next and with jdk-next
+        description: also build and test with jdk-next
         type: boolean
         default: false
       jdk-main:
@@ -24,14 +26,6 @@ on:
         description: next JDK, builds and runs the TCKs as well
         type: string
         default: '25'
-      bnd-current:
-        description: bnd version of the deploy variant
-        type: string
-        default: '6.4.0'
-      bnd-next:
-        description: next bnd version
-        type: string
-        default: '7.2.3'
 
 permissions:
   contents: read
@@ -82,13 +76,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # main always; bnd-next and jdk-next only with the extended input
+        # main and bnd-next always; jdk-next only with the extended input
         # (a job-level if has no matrix context, so the selection is here)
-        variant: ${{ fromJSON(inputs.extended && '["main", "bnd-next", "jdk-next"]' || '["main"]') }}
+        variant: ${{ fromJSON(inputs.extended && '["main", "bnd-next", "jdk-next"]' || '["main", "bnd-next"]') }}
     name: ${{ matrix.variant }}
+    # only main decides; the other variants are tests of what comes next
+    # (a TCK run may hang with a next bnd, so they get a time limit)
+    continue-on-error: ${{ matrix.variant != 'main' }}
+    timeout-minutes: ${{ matrix.variant == 'main' && 360 || 60 }}
     env:
       JAVA: ${{ matrix.variant == 'jdk-next' && inputs.jdk-next || inputs.jdk-main }}
-      BND: ${{ matrix.variant == 'bnd-next' && inputs.bnd-next || inputs.bnd-current }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -100,11 +97,17 @@ jobs:
           java-version: ${{ env.JAVA }}
           cache: maven
 
-      # builds everything, resolves every tck.bndrun and runs every TCK;
-      # -runbundles are computed, never committed. -U forces snapshot
-      # updates: the cached ~/.m2 must not pin a stale parent pom
-      - name: Build, resolve and test
-        run: mvn -B -ntp -U -Dbnd.version="$BND" install
+      # builds everything, verifies the committed -runbundles of every
+      # tck.bndrun and runs every TCK; bnd-next sets bnd.version to the
+      # parent's bnd.next.version. -U forces snapshot updates: the cached
+      # ~/.m2 must not pin a stale parent pom
+      - name: Build, verify and test
+        run: |
+          bnd=()
+          if [ "${{ matrix.variant }}" = bnd-next ]; then
+            bnd=('-Dbnd.version=${bnd.next.version}')
+          fi
+          mvn -B -ntp -U "${bnd[@]}" install
 
       # renders the JUnit XML of the TCK runs as a check run with
       # annotations and a job summary
@@ -188,8 +191,7 @@ jobs:
 
       - name: Build javadoc jars
         run: >-
-          mvn -B -ntp -U -DskipTests -Pjavadoc-check
-          -Dbnd.version=${{ inputs.bnd-current }} package
+          mvn -B -ntp -U -DskipTests -Pjavadoc-check package
 
   deploy:
     needs: [build, javadoc]
@@ -220,8 +222,7 @@ jobs:
 
       - name: Deploy SNAPSHOT (main variant)
         run: >-
-          mvn -B -ntp -U -Pdeploy -Dgpg.skip=true -DskipTests
-          -Dbnd.version=${{ inputs.bnd-current }} deploy
+          mvn -B -ntp -U -Pdeploy -Dgpg.skip=true -DskipTests deploy
         env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_SONATYPE_TOKEN_USERNAME }}
           CENTRAL_PASSWORD: ${{ secrets.CENTRAL_SONATYPE_TOKEN_PASSWORD }}
