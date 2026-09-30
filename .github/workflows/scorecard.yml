@@ -1,0 +1,37 @@
+# Central reusable OSSF Scorecard workflow for all org.osgi.* repos, called
+# from each repo's scorecard-analysis.yml stub (otterdog blueprint
+# scorecard-integration). The Scorecard API verifies THIS file (the
+# job_workflow_ref of the signing certificate), so it must follow the
+# scorecard-action workflow restrictions: no top-level env or defaults, no
+# workflow-level write permissions, id-token: write only on this job, an
+# Ubuntu hosted runner, and only the approved actions as steps.
+# No top-level permissions: a called workflow may not request more than the
+# caller's job grants, and the stub grants exactly the two scopes below.
+name: scorecard
+
+on:
+  workflow_call:
+
+jobs:
+  analysis:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - name: Upload to code-scanning
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: results.sarif
