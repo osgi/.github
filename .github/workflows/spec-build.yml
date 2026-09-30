@@ -1,8 +1,9 @@
 # Central reusable build workflow for all org.osgi.* spec repos, called
 # from each repo's build.yml stub (otterdog blueprint require-ci-workflows).
-# Variants: main (deploy candidate, bnd.version of the parent pom),
-# bnd-next (always, as a test with bnd.next.version of the parent pom;
-# its failure does not fail the build) and jdk-next (gated behind the
+# Variants: main (deploy candidate, bnd.version and bnd.tck.version of the
+# parent pom), bnd-next (always, as a test of the latest bnd snapshot for
+# the build, the resolver and the tester; its failure does not fail the
+# build) and jdk-next (gated behind the
 # "extended" input). Each variant builds the whole repo, verifies every
 # tck.bndrun and runs every TCK.
 name: spec-build
@@ -98,16 +99,51 @@ jobs:
           cache: maven
 
       # builds everything, verifies the committed -runbundles of every
-      # tck.bndrun and runs every TCK; bnd-next sets bnd.version to the
-      # parent's bnd.next.version. -U forces snapshot updates: the cached
-      # ~/.m2 must not pin a stale parent pom
+      # tck.bndrun and runs every TCK. bnd-next takes the latest bnd
+      # snapshot from the bnd snapshot repository (settings.xml of this job
+      # only) for bnd.version and bnd.tck.version; the parent pom knows
+      # neither the snapshot version nor the repository. -U forces snapshot
+      # updates: the cached ~/.m2 must not pin a stale parent pom
       - name: Build, verify and test
         run: |
-          bnd=()
+          mvn_args=()
           if [ "${{ matrix.variant }}" = bnd-next ]; then
-            bnd=('-Dbnd.version=${bnd.next.version}')
+            repo=https://bndtools.jfrog.io/bndtools/libs-snapshot
+            next=$(curl -fsSL "$repo/biz/aQute/bnd/bnd-maven-plugin/maven-metadata.xml" \
+              | sed -n 's:.*<latest>\(.*\)</latest>.*:\1:p')
+            [ -n "$next" ] || { echo "::error::no bnd snapshot found in $repo"; exit 1; }
+            echo "bnd-next: bnd $next"
+            cat > "$RUNNER_TEMP/bnd-snapshots.xml" <<SETTINGS
+          <settings>
+            <profiles>
+              <profile>
+                <id>bnd-snapshots</id>
+                <repositories>
+                  <repository>
+                    <id>bnd-snapshots</id>
+                    <url>$repo/</url>
+                    <releases><enabled>false</enabled></releases>
+                    <snapshots><enabled>true</enabled></snapshots>
+                  </repository>
+                </repositories>
+                <pluginRepositories>
+                  <pluginRepository>
+                    <id>bnd-snapshots</id>
+                    <url>$repo/</url>
+                    <releases><enabled>false</enabled></releases>
+                    <snapshots><enabled>true</enabled></snapshots>
+                  </pluginRepository>
+                </pluginRepositories>
+              </profile>
+            </profiles>
+            <activeProfiles>
+              <activeProfile>bnd-snapshots</activeProfile>
+            </activeProfiles>
+          </settings>
+          SETTINGS
+            mvn_args=(-s "$RUNNER_TEMP/bnd-snapshots.xml" "-Dbnd.version=$next" "-Dbnd.tck.version=$next")
           fi
-          mvn -B -ntp -U "${bnd[@]}" install
+          mvn -B -ntp -U "${mvn_args[@]}" install
 
       # renders the JUnit XML of the TCK runs as a check run with
       # annotations and a job summary
