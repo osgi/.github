@@ -47,8 +47,10 @@ jobs:
           [ "$tag" = "$rev" ] \
             || { echo "::error::tag '$tag' does not match version '$rev'"; exit 1; }
 
+      # TEMPORARY -Dmaven.repository.credentialScope=id, see the deploy job
+      # of spec-build.yml
       - name: Build, test and deploy release
-        run: mvn -B -ntp -U -Pdeploy deploy
+        run: mvn -B -ntp -U -Pdeploy -Dmaven.repository.credentialScope=id deploy
         env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_SONATYPE_TOKEN_USERNAME }}
           CENTRAL_PASSWORD: ${{ secrets.CENTRAL_SONATYPE_TOKEN_PASSWORD }}
