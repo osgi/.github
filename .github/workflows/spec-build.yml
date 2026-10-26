@@ -256,8 +256,13 @@ jobs:
           cache: maven
           # server id used by the parent pom (central-publishing-maven-plugin)
           server-id: central
-          server-username: CENTRAL_USERNAME
-          server-password: CENTRAL_PASSWORD
+          server-username-env-var: CENTRAL_USERNAME
+          server-password-env-var: CENTRAL_PASSWORD
+          # Maven 3.10 offers the credentials of a server only to the origins
+          # bound to its id, and the id central is bound to
+          # repo.maven.apache.org: the token has to reach central.sonatype.com
+          mvn-server-repository-origins: |
+            central:https://central.sonatype.com
 
       # releases go through spec-release.yml (tag push) instead
       # spec repos: -Drevision in .mvn/maven.config; the parent pom: literal
@@ -269,17 +274,8 @@ jobs:
           echo "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+-SNAPSHOT$' \
             || { echo "::error::version '$v' is not a -SNAPSHOT — refusing scheduled deploy"; exit 1; }
 
-      # TEMPORARY -Dmaven.repository.credentialScope=id: Maven 3.10 (runner
-      # image) offers server credentials only to the origins bound to the id,
-      # and the id central is bound to repo.maven.apache.org, so the token
-      # never reaches central.sonatype.com (HTTP 401). Remove it once
-      # setup-java ships mvn-server-repository-origins (actions/setup-java#1282,
-      # release asked in actions/setup-java#1284) and set
-      #   mvn-server-repository-origins: central:https://central.sonatype.com
       - name: Deploy SNAPSHOT (main variant)
-        run: >-
-          mvn -B -ntp -U -Pdeploy -Dgpg.skip=true -DskipTests
-          -Dmaven.repository.credentialScope=id deploy
+        run: mvn -B -ntp -U -Pdeploy -Dgpg.skip=true -DskipTests deploy
         env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_SONATYPE_TOKEN_USERNAME }}
           CENTRAL_PASSWORD: ${{ secrets.CENTRAL_SONATYPE_TOKEN_PASSWORD }}
